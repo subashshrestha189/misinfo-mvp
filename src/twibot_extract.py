@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 import pandas as pd
 
 # Path to the folder where you saved user.json / label.csv / split.csv
-TWIBOT_ROOT = Path.home() / "Documents" / "TwiBot-20-local"
+TWIBOT_ROOT = Path.home() / "Documents" / "TwiBot-22"
 
 USER_JSON = TWIBOT_ROOT / "user.json"
 LABEL_CSV = TWIBOT_ROOT / "label.csv"

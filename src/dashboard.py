@@ -10,10 +10,9 @@ from config import API_BASE
 
 # ---------- PAGE CONFIG ----------
 st.set_page_config(
-    page_title="Misinformation Detector",
+    page_title="Bot & Profile Risk Detector",
     page_icon="🛡️",
     layout="wide")
-st.write("DEBUG: dashboard script started")
 
 
 # ---------- SIDEBAR / SETTINGS ----------
@@ -33,10 +32,11 @@ with st.sidebar:
     st.markdown("---")
     st.caption("Tip: Keep your FastAPI running in another terminal.")
 
-st.title("🛡️ Unified Misinformation Detection")
-st.write("Analyze **articles** for credibility and **users** for bot-likelihood")
+st.title("🛡️ Bot & Profile Risk Detection")
+st.write("Detect bots from account metadata and assess profile image risk.")
 
-tabs = st.tabs(["📰 Article Analyzer", "👤 User Analyzer", "📈 Diagnostics"])
+tabs = st.tabs(["👤 User Analyzer", "🖼️ Profile Image Privacy", "📈 Diagnostics"])
+
 
 # ---------- HELPERS ----------
 def call_api_json(method: str, url: str, payload: Dict[str, Any] | None = None, timeout: int = 30):
@@ -55,107 +55,162 @@ def risk_badge(prob: float) -> str:
     if prob > 0.30:  return "🟠 Medium"
     return "🟢 Low"
 
-# ---------- TAB 1: ARTICLE ANALYZER ----------
+
+# ---------- TAB 1: USER ANALYZER ----------
 with tabs[0]:
-    st.subheader("📰 Analyze Article Text")
-    with st.form("article_form"):
-        text = st.text_area(
-            "Paste article text (or a few paragraphs)",
-            height=200,
-            placeholder="e.g., Government announces new renewable energy policy for 2026..."
-        )
-        colA, colB = st.columns([1,1])
-        with colA:
-            maxlen = st.slider("Token limit (client-side truncate)", 64, 256, 128, step=32)
-        with colB:
-            submit_article = st.form_submit_button("Analyze Article")
-
-    if submit_article:
-        if not text.strip():
-            st.warning("Please paste some text first.")
-        else:
-            with st.spinner("Analyzing with BERT…"):
-                payload = {"text": text[:10000]}  # guard against huge pastes
-                data, err = call_api_json("POST", f"{api_base}/analyze/article", payload)
-                time.sleep(0.1)
-            if err:
-                st.error(f"API error: {err}")
-            elif not data:
-                st.error("No response from API.")
-            else:
-                st.success("Analysis complete.")
-                col1, col2 = st.columns([1,1])
-                with col1:
-                    st.metric("Predicted Label", data.get("predicted_label","—"))
-                    st.metric("Confidence", f"{data.get('confidence',0)*100:.1f}%")
-                with col2:
-                    probs = data.get("probabilities", {})
-                    if probs:
-                        df = pd.DataFrame(
-                            [{"Class": k, "Probability": float(v)} for k,v in probs.items()]
-                        ).sort_values("Probability", ascending=False)
-                        st.write("Class Probabilities")
-                        st.bar_chart(df.set_index("Class"))
-                        st.dataframe(df, use_container_width=True)
-                st.caption("Model: DistilBERT fine-tuned (fast subset).")
-
-# ---------- TAB 2: USER ANALYZER ----------
-with tabs[1]:
-    st.subheader("👤 Analyze User Metadata (Bot Detection)")
-    st.caption("Enter basic profile/activity stats. These map to your Day-4 engineered features.")
+    st.subheader("👤 User Bot Detection")
+    st.caption("Enter account metadata to score bot probability and overall trust.")
 
     with st.form("user_form"):
         c1, c2, c3 = st.columns(3)
         with c1:
-            followers_count   = st.number_input("Followers", min_value=0, value=120, step=1)
-            listed_count      = st.number_input("Listed Count", min_value=0, value=10, step=1)
+            followers_count  = st.number_input("Followers",         min_value=0,  value=120,  step=1)
+            listed_count     = st.number_input("Listed Count",       min_value=0,  value=10,   step=1)
         with c2:
-            following_count   = st.number_input("Following", min_value=0, value=200, step=1)
-            account_age_days  = st.number_input("Account Age (days)", min_value=1, value=800, step=1)
+            following_count  = st.number_input("Following",          min_value=0,  value=200,  step=1)
+            account_age_days = st.number_input("Account Age (days)", min_value=1,  value=800,  step=1)
         with c3:
-            tweet_count       = st.number_input("Tweet Count", min_value=0, value=1500, step=1)
+            tweet_count      = st.number_input("Tweet Count",        min_value=0,  value=1500, step=1)
 
         st.markdown("#### Profile Flags")
         d1, d2, d3, d4, d5 = st.columns(5)
         with d1: has_profile_image = st.checkbox("Has Profile Image", value=True)
-        with d2: has_description   = st.checkbox("Has Description", value=True)
-        with d3: verified          = st.checkbox("Verified", value=False)
-        with d4: has_location      = st.checkbox("Has Location", value=True)
-        with d5: has_url           = st.checkbox("Has URL", value=False)
+        with d2: has_description   = st.checkbox("Has Description",   value=True)
+        with d3: verified          = st.checkbox("Verified",          value=False)
+        with d4: has_location      = st.checkbox("Has Location",      value=True)
+        with d5: has_url           = st.checkbox("Has URL",           value=False)
 
         submit_user = st.form_submit_button("Analyze User")
 
     if submit_user:
         payload = {
-            "followers_count": followers_count,
-            "following_count": following_count,
-            "tweet_count": tweet_count,
-            "listed_count": listed_count,
-            "account_age_days": account_age_days,
+            "followers_count":  float(followers_count),
+            "following_count":  float(following_count),
+            "tweet_count":      float(tweet_count),
+            "listed_count":     float(listed_count),
+            "account_age_days": float(account_age_days),
             "has_profile_image": int(has_profile_image),
-            "has_description": int(has_description),
-            "verified": int(verified),
-            "has_location": int(has_location),
-            "has_url": int(has_url),
+            "has_description":   int(has_description),
+            "verified":          int(verified),
+            "has_location":      int(has_location),
+            "has_url":           int(has_url),
         }
         with st.spinner("Scoring bot probability…"):
             data, err = call_api_json("POST", f"{api_base}/analyze/user", payload)
             time.sleep(0.1)
+
         if err:
             st.error(f"API error: {err}")
         elif not data:
             st.error("No response from API.")
         else:
-            prob = float(data.get("bot_probability", 0.0))
-            badge = risk_badge(prob)
             st.success("Analysis complete.")
-            st.metric("Bot Probability", f"{prob*100:.1f}%")
-            st.write(f"**Risk Level:** {badge}")
-            # Visual meter
-            st.progress(min(max(prob, 0.0), 1.0))
-            st.json(data)
 
-    st.caption("Model: Random Forest (Day-4) with calibrated probabilities.")
+            user     = data.get("user", {})
+            ensemble = data.get("ensemble", {})
+
+            # --- Top-level metrics ---
+            m1, m2, m3 = st.columns(3)
+            with m1:
+                bot_prob = float(user.get("bot_probability", 0.0))
+                st.metric("Bot Probability", f"{bot_prob*100:.1f}%")
+                st.write(f"**Risk Level:** {risk_badge(bot_prob)}")
+                st.progress(min(max(bot_prob, 0.0), 1.0))
+            with m2:
+                trust = ensemble.get("trust_score")
+                if trust is not None:
+                    st.metric("Trust Score", f"{float(trust)*100:.1f}%")
+                st.write(f"**{ensemble.get('trust_level', '—')}**")
+            with m3:
+                heur = float(data.get("heuristics", {}).get("heuristic_score", 0.0))
+                st.metric("Heuristic Score", f"{heur*100:.1f}%")
+
+            # --- Ensemble breakdown chart ---
+            trust_val = float(ensemble.get("trust_score", 0.0))
+            bot_trust = 1.0 - bot_prob
+            heur_val  = float(data.get("heuristics", {}).get("heuristic_score", 0.0))
+
+            st.markdown("#### Trust Score Breakdown")
+            df_ensemble = pd.DataFrame([
+                {"Component": "Bot Trust / 1−P(bot) (w=0.6)", "Score": bot_trust},
+                {"Component": "Heuristic Score (w=0.4)",      "Score": heur_val},
+                {"Component": "▶ Final Trust Score",          "Score": trust_val},
+            ])
+            st.bar_chart(df_ensemble.set_index("Component"))
+            st.dataframe(
+                df_ensemble.style.highlight_max(subset=["Score"], color="#d4edda")
+                                 .format({"Score": "{:.3f}"}),
+                use_container_width=True,
+            )
+
+            with st.expander("Raw API response"):
+                st.json(data)
+
+
+# ---------- TAB 2: PROFILE IMAGE PRIVACY ----------
+with tabs[1]:
+    st.subheader("🖼️ Profile Image Risk & Privacy")
+
+    col_left, col_right = st.columns(2)
+
+    # --- Risk scoring ---
+    with col_left:
+        st.markdown("#### Risk Scoring (`/analyze/profile-image`)")
+        uploaded_risk = st.file_uploader("Upload profile image", type=["png","jpg","jpeg"], key="risk_upload")
+        if st.button("Analyze Image Risk") and uploaded_risk:
+            with st.spinner("Scoring image risk…"):
+                try:
+                    resp = requests.post(
+                        f"{api_base}/analyze/profile-image",
+                        files={"file": (uploaded_risk.name, uploaded_risk.getvalue(), uploaded_risk.type)},
+                        timeout=30,
+                    )
+                    resp.raise_for_status()
+                    result = resp.json()
+                    st.image(uploaded_risk, caption="Uploaded image", use_column_width=True)
+                    st.metric("Risk Score", f"{result.get('profile_image_risk_score', 0)*100:.1f}%")
+                    st.write(f"**Risk Level:** {result.get('risk_level','—').capitalize()}")
+                    with st.expander("Signals"):
+                        st.json(result.get("signals", {}))
+                    if result.get("notes"):
+                        for note in result["notes"]:
+                            st.caption(f"• {note}")
+                except requests.exceptions.RequestException as e:
+                    st.error(f"API error: {e}")
+        elif not uploaded_risk:
+            st.info("Upload an image to score its risk.")
+
+    # --- Blur on demand ---
+    with col_right:
+        st.markdown("#### Blur on Demand (`/privacy/blur-on-demand`)")
+        uploaded_blur = st.file_uploader("Upload profile image", type=["png","jpg","jpeg"], key="blur_upload")
+        blur_strength = st.slider("Blur strength", min_value=5, max_value=99, value=35, step=2)
+        if st.button("Apply Privacy Blur") and uploaded_blur:
+            with st.spinner("Applying blur…"):
+                try:
+                    resp = requests.post(
+                        f"{api_base}/privacy/blur-on-demand",
+                        files={"file": (uploaded_blur.name, uploaded_blur.getvalue(), uploaded_blur.type)},
+                        params={"blur_strength": blur_strength},
+                        timeout=30,
+                    )
+                    resp.raise_for_status()
+                    risk_score      = resp.headers.get("X-Risk-Score", "—")
+                    risk_level      = resp.headers.get("X-Risk-Level", "—")
+                    privacy_applied = resp.headers.get("X-Privacy-Applied", "False")
+                    col_a, col_b = st.columns(2)
+                    with col_a:
+                        st.image(uploaded_blur, caption="Original", use_column_width=True)
+                    with col_b:
+                        st.image(resp.content, caption="Processed", use_column_width=True)
+                    st.metric("Risk Score", f"{float(risk_score)*100:.1f}%" if risk_score != "—" else "—")
+                    st.write(f"**Risk Level:** {risk_level.capitalize()}")
+                    st.write(f"**Blur Applied:** {'Yes' if privacy_applied == 'True' else 'No'}")
+                except requests.exceptions.RequestException as e:
+                    st.error(f"API error: {e}")
+        elif not uploaded_blur:
+            st.info("Upload an image to apply blur.")
+
 
 # ---------- TAB 3: DIAGNOSTICS ----------
 with tabs[2]:

@@ -151,7 +151,7 @@ joblib.dump(calibrated, MODEL_DIR / "twibot_rf_calibrated.joblib")
 joblib.dump({"feature_list": feat_names}, MODEL_DIR / "feature_schema.joblib")
 
 summary = {
-    "best_params": search.best_params_,
+    "best_params": search.best_params_ if not too_tiny_for_search else {},
     "n_features": len(feat_names),
     "holdout_metrics": {"auc": auc, "average_precision": ap, "brier": brier},
 }

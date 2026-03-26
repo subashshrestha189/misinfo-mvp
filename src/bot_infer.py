@@ -2,7 +2,7 @@
 import joblib
 import pandas as pd
 from pathlib import Path
-from twibot_features import build_features
+from src.twibot_features import build_features
 
 MODEL_DIR = Path("models/bot_tuned")
 model = joblib.load(MODEL_DIR / "twibot_rf_calibrated.joblib")
@@ -14,7 +14,7 @@ def predict_user(user_row: dict):
     # ensure column order matches training
     X = X.reindex(columns=schema["feature_list"], fill_value=0)
     prob = float(model.predict_proba(X)[:,1][0])
-    lbl = int(prob >= 0.5)
+    lbl = int(prob >= 0.30)
     return {"is_bot": lbl, "bot_probability": prob}
 
 if __name__ == "__main__":

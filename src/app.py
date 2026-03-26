@@ -5,22 +5,12 @@ from typing import Optional
 import joblib
 import pandas as pd
 from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from pydantic import BaseModel
 
 from src.ensemble import combine_scores, compute_heuristic_score
 from src.twibot_features import build_features
-
-try:
-    import torch
-    from transformers import DistilBertForSequenceClassification, DistilBertTokenizerFast
-
-    FAKENEWS_IMPORT_ERROR: Optional[Exception] = None
-except Exception as exc:
-    torch = None
-    DistilBertTokenizerFast = None
-    DistilBertForSequenceClassification = None
-    FAKENEWS_IMPORT_ERROR = exc
 
 try:
     from src.cv.face_detect import FaceDetector
@@ -43,40 +33,28 @@ except Exception as exc:
 # ------------- CONFIG PATHS -----------------
 BASE_DIR = Path(__file__).resolve().parent.parent
 BOT_MODEL_DIR = BASE_DIR / "models" / "bot_tuned"
-FAKENEWS_MODEL_DIR = BASE_DIR / "models" / "fake_news_bert_fast"
-ENCODER_PATH = BASE_DIR / "models" / "fake_news_baseline" / "label_encoder.joblib"
 
 # ---- BOT THRESHOLDS (tuned) ----
 BOT_THRESHOLD = 0.30
 HIGH_RISK = 0.60
-MEDIUM_RISK = 0.30
 
 # ------------- FASTAPI APP ------------------
 app = FastAPI(
-    title="Misinformation Detection API",
-    description="Detects bots and fake news using ML models",
+    title="Bot & Profile Risk Detection API",
+    description="Detects bots and profile image risk using ML models",
     version="1.0",
+)
+
+# Dev: allow all origins. Prod: restrict to ["https://*.x.com"]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["GET", "POST"],
+    allow_headers=["*"],
 )
 
 # ------------- LOAD MODELS ------------------
 print("Loading models...")
-
-# --- Fake-news model ---
-tokenizer = None
-fake_model = None
-label_encoder = None
-fake_model_load_error: Optional[Exception] = None
-
-if FAKENEWS_IMPORT_ERROR is None:
-    try:
-        tokenizer = DistilBertTokenizerFast.from_pretrained(FAKENEWS_MODEL_DIR)
-        fake_model = DistilBertForSequenceClassification.from_pretrained(FAKENEWS_MODEL_DIR)
-        label_encoder = joblib.load(ENCODER_PATH)
-        fake_model.eval()
-    except Exception as exc:
-        fake_model_load_error = exc
-else:
-    fake_model_load_error = FAKENEWS_IMPORT_ERROR
 
 # --- Bot model ---
 bot_model = None
@@ -103,25 +81,7 @@ else:
 
 
 # ------------- SCHEMAS ------------------
-class ArticleInput(BaseModel):
-    text: str
-
-
 class UserInput(BaseModel):
-    followers_count: float
-    following_count: float
-    tweet_count: float
-    listed_count: float
-    account_age_days: float
-    has_profile_image: int
-    has_description: int
-    verified: int
-    has_location: int
-    has_url: int
-
-
-class FullInput(BaseModel):
-    text: str
     followers_count: float
     following_count: float
     tweet_count: float
@@ -140,14 +100,6 @@ def _dependency_error_detail(service: str, exc: Optional[Exception]) -> str:
     if exc is not None:
         detail = f"{detail} Root cause: {type(exc).__name__}: {exc}"
     return detail
-
-
-def _ensure_fake_news_ready() -> None:
-    if tokenizer is None or fake_model is None or label_encoder is None:
-        raise HTTPException(
-            status_code=503,
-            detail=_dependency_error_detail("Fake-news model", fake_model_load_error),
-        )
 
 
 def _ensure_bot_model_ready() -> None:
@@ -174,35 +126,6 @@ def _ensure_cv_ready() -> None:
         )
 
 
-def analyze_article_internal(text: str) -> dict:
-    """Run fake-news model on a single text and return a structured dict."""
-    _ensure_fake_news_ready()
-    text = text.strip()
-    if not text:
-        raise HTTPException(status_code=400, detail="Text input cannot be empty.")
-
-    inputs = tokenizer(
-        text,
-        return_tensors="pt",
-        truncation=True,
-        padding="max_length",
-        max_length=128,
-    )
-    with torch.no_grad():
-        outputs = fake_model(**inputs)
-        probs = torch.softmax(outputs.logits, dim=-1).numpy()[0]
-    pred_id = probs.argmax()
-    label = label_encoder.inverse_transform([pred_id])[0]
-    confidence = float(probs[pred_id])
-    probabilities = {label_encoder.classes_[i]: float(p) for i, p in enumerate(probs)}
-
-    return {
-        "predicted_label": label,
-        "confidence": confidence,
-        "probabilities": probabilities,
-    }
-
-
 def analyze_user_internal(user_dict: dict) -> dict:
     """Run bot model on a single user metadata dict and return a structured dict."""
     _ensure_bot_model_ready()
@@ -215,7 +138,7 @@ def analyze_user_internal(user_dict: dict) -> dict:
 
     if prob >= HIGH_RISK:
         risk_level = "High"
-    elif prob >= MEDIUM_RISK:
+    elif prob >= BOT_THRESHOLD:
         risk_level = "Medium"
     else:
         risk_level = "Low"
@@ -231,13 +154,7 @@ def analyze_user_internal(user_dict: dict) -> dict:
 # ------------- ROUTES ------------------
 @app.get("/")
 def home():
-    return {"message": "Misinformation Detection API is running!"}
-
-
-@app.post("/analyze/article")
-def analyze_article(data: ArticleInput):
-    """Fake-news analysis endpoint."""
-    return analyze_article_internal(data.text)
+    return {"message": "Bot & Profile Risk Detection API is running!"}
 
 
 @app.post("/analyze/user")
@@ -248,51 +165,15 @@ def analyze_user(data: UserInput):
     if data.account_age_days <= 0:
         raise HTTPException(status_code=400, detail="Account age must be a positive number of days.")
 
-    return analyze_user_internal(data.dict())
-
-
-@app.post("/analyze/full")
-def analyze_full(data: FullInput):
-    """
-    Combined endpoint:
-    - analyzes article text with BERT
-    - analyzes user with RF bot model
-    - computes overall trust_score using ensemble weights + heuristics
-    """
-    article_result = analyze_article_internal(data.text)
-
-    user_payload = {
-        "followers_count": data.followers_count,
-        "following_count": data.following_count,
-        "tweet_count": data.tweet_count,
-        "listed_count": data.listed_count,
-        "account_age_days": data.account_age_days,
-        "has_profile_image": data.has_profile_image,
-        "has_description": data.has_description,
-        "verified": data.verified,
-        "has_location": data.has_location,
-        "has_url": data.has_url,
-    }
-
-    if user_payload["followers_count"] < 0 or user_payload["following_count"] < 0 or user_payload["tweet_count"] < 0:
-        raise HTTPException(status_code=400, detail="Counts (followers, following, tweets) cannot be negative.")
-    if user_payload["account_age_days"] <= 0:
-        raise HTTPException(status_code=400, detail="Account age must be a positive number of days.")
-
-    user_result = analyze_user_internal(user_payload)
-    heur_score = compute_heuristic_score(
-        user=user_payload,
-        article_label=article_result.get("predicted_label"),
-        article_confidence=article_result.get("confidence"),
-    )
+    user_dict = data.model_dump()
+    user_result = analyze_user_internal(user_dict)
+    heur_score = compute_heuristic_score(user=user_dict)
     ensemble = combine_scores(
-        content_confidence=article_result.get("confidence", 0.0),
         bot_probability=user_result.get("bot_probability", 0.0),
         heuristic_score=heur_score,
     )
 
     return {
-        "article": article_result,
         "user": user_result,
         "heuristics": {"heuristic_score": heur_score},
         "ensemble": ensemble,
@@ -302,7 +183,7 @@ def analyze_full(data: FullInput):
 @app.post("/analyze/profile-image")
 async def analyze_profile_image(file: UploadFile = File(...)):
     """
-    Feature 2: Profile Image Risk Scoring
+    Profile Image Risk Scoring.
     Upload an image and return a risk score + explainable signals.
     """
     _ensure_cv_ready()
@@ -330,12 +211,13 @@ async def blur_on_demand(file: UploadFile = File(...), blur_strength: int = 35):
     try:
         content = await file.read()
         img = read_image_bytes(content)
+        img = resize_max(img, max_side=512)
 
         risk_result = compute_profile_image_risk(img, face_detector)
         risk_level = risk_result["risk_level"]
         risk_score = risk_result["profile_image_risk_score"]
+        boxes = risk_result["boxes"]
 
-        boxes = face_detector.detect(img)
         privacy_applied = risk_level in ["medium", "high"] and len(boxes) > 0
         out_img = blur_faces(img, boxes, blur_strength=blur_strength) if privacy_applied else img
 

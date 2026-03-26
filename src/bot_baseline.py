@@ -6,7 +6,7 @@ from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import classification_report
-from utils_io import ensure_dir
+from src.utils_io import ensure_dir
 
 DATA = Path("data/twibot/users.csv")
 MODEL_DIR = ensure_dir("models/bot_baseline")

@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MisInfo Guard</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      width: 280px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 13px;
+      color: #1a1a1a;
+      background: #fff;
+    }
+    header {
+      background: #1d9bf0;
+      color: #fff;
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    header span { font-size: 18px; }
+    header h1 { font-size: 15px; font-weight: 700; }
+
+    .section { padding: 12px 16px; border-bottom: 1px solid #e7e7e7; }
+    .section:last-child { border-bottom: none; }
+    label { display: block; font-size: 11px; color: #666; margin-bottom: 4px; }
+
+    input[type="text"] {
+      width: 100%;
+      padding: 6px 8px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      font-size: 13px;
+    }
+    button {
+      margin-top: 6px;
+      width: 100%;
+      padding: 7px;
+      background: #1d9bf0;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      font-size: 13px;
+      cursor: pointer;
+      font-weight: 600;
+    }
+    button:hover { background: #1a8cd8; }
+
+    #status {
+      margin-top: 8px;
+      padding: 6px 8px;
+      border-radius: 6px;
+      font-size: 12px;
+      display: none;
+    }
+    #status.ok    { background: #d4edda; color: #155724; display: block; }
+    #status.error { background: #f8d7da; color: #721c24; display: block; }
+
+    .legend { display: flex; flex-direction: column; gap: 4px; }
+    .legend-row { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+    .pill {
+      padding: 1px 8px;
+      border-radius: 9999px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .pill--green  { background: #d4edda; color: #155724; }
+    .pill--orange { background: #fff3cd; color: #856404; }
+    .pill--red    { background: #f8d7da; color: #721c24; }
+
+    footer { padding: 8px 16px; font-size: 11px; color: #999; text-align: center; }
+  </style>
+</head>
+<body>
+  <header>
+    <span>🛡️</span>
+    <h1>MisInfo Guard</h1>
+  </header>
+
+  <div class="section">
+    <label>FastAPI Base URL</label>
+    <input type="text" id="apiBase" placeholder="http://localhost:8000" />
+    <button id="testBtn">Test Connection</button>
+    <div id="status"></div>
+  </div>
+
+  <div class="section">
+    <label>Badge Legend</label>
+    <div class="legend">
+      <div class="legend-row"><span class="pill pill--green">🟢 &lt;30%</span> Low bot probability</div>
+      <div class="legend-row"><span class="pill pill--orange">🟠 30–59%</span> Medium bot probability</div>
+      <div class="legend-row"><span class="pill pill--red">🔴 ≥60%</span> High bot probability</div>
+    </div>
+  </div>
+
+  <footer>Hover any badge on X for details</footer>
+  <script src="popup.js"></script>
+</body>
+</html>

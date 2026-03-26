@@ -2,7 +2,7 @@
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
-from twibot_features import build_features
+from src.twibot_features import build_features
 
 df = pd.read_csv("data/twibot/users.csv")
 assert "label" in df.columns, "CSV must include 'label' (1=bot, 0=human)."

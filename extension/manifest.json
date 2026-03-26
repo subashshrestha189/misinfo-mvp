@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "MisInfo Guard",
+  "version": "1.0",
+  "description": "Bot and profile risk detection on X (Twitter) — powered by your local FastAPI.",
+
+  "permissions": ["storage"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "host_permissions": [
+    "https://x.com/*",
+    "https://twitter.com/*",
+    "https://pbs.twimg.com/*",
+    "http://localhost:8000/*"
+  ],
+
+  "content_scripts": [
+    {
+      "matches": ["https://x.com/*", "https://twitter.com/*"],
+      "js": ["content.js"],
+      "css": ["styles.css"],
+      "run_at": "document_idle"
+    }
+  ],
+
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "MisInfo Guard"
+  }
+}

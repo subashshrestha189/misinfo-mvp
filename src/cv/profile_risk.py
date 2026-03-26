@@ -95,7 +95,7 @@ def compute_profile_image_risk(
     # --- Avatar/logo heuristics ---
     edges = edge_density_score(bgr_img)  # 0..1
     # both extremely low edges (blank) OR extremely high edges (logo) can be suspicious
-    edge_risk = clamp01(abs(edges - 0.10) / 0.10)  # centered around 0.10 as "normal-ish"
+    edge_risk = clamp01(abs(edges - 0.10) / 0.25)  # centered around 0.10 as "normal-ish"
 
     color_var = color_variance_score(bgr_img)  # 0..1
     # low color variance => higher risk
@@ -124,13 +124,14 @@ def compute_profile_image_risk(
     # --- Weighted score (explainable) ---
     # Keep it transparent and adjustable.
     score = (
-        0.35 * no_face_risk +
+        0.30 * no_face_risk +
         0.15 * resolution_risk +
         0.15 * blur_risk +
         0.10 * compression_risk +
         0.10 * edge_risk +
         0.10 * color_risk +
-        0.05 * multi_face_risk
+        0.05 * multi_face_risk +
+        0.05 * clamp01(face_area_ratio * 3)
     )
     score = clamp01(score)
 
@@ -175,5 +176,6 @@ def compute_profile_image_risk(
         "profile_image_risk_score": round(score, 3),
         "risk_level": level,
         "signals": signals,
-        "notes": notes
+        "notes": notes,
+        "boxes": boxes,
     }

@@ -11,7 +11,7 @@ from sklearn.calibration import CalibratedClassifierCV
 from sklearn.model_selection import StratifiedKFold, RandomizedSearchCV
 from sklearn.metrics import classification_report, confusion_matrix, roc_auc_score
 
-from twibot_features import build_features, feature_list
+from src.twibot_features import build_features, feature_list
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_PATH = BASE_DIR / "data" / "twibot" / "users.csv"
@@ -39,20 +39,25 @@ def main():
     # Basic train/holdout split (80/20) – stratified
     from sklearn.model_selection import train_test_split
 
-    # ---- OPTIONAL: use a subset for training/tuning to avoid RAM issues ----
-    MAX_ROWS = 120_000   # you can lower to e.g. 60_000 if needed
+    # ---- Balanced class subsample to fix the 11.8:1 human/bot imbalance ----
+    # The original dataset has far more humans than bots. A plain random subsample
+    # keeps that ratio, causing the model to predict "human" for everything
+    # (0% bot recall). Instead we cap each class separately at a 2:1 ratio.
+    bot_idx   = y[y == 1].index
+    human_idx = y[y == 0].index
 
-    if len(X) > MAX_ROWS:
-        print(f"Subsampling to {MAX_ROWS} rows for training/tuning to save memory...")
-        X_small, _, y_small, _ = train_test_split(
-            X,
-            y,
-            train_size=MAX_ROWS,
-            stratify=y,
-            random_state=42,
-        )
-    else:
-        X_small, y_small = X, y
+    n_bots   = min(30_000, len(bot_idx))
+    n_humans = min(60_000, len(human_idx))   # at most 2:1
+
+    rng = np.random.default_rng(42)
+    sampled_bots   = rng.choice(bot_idx,   size=n_bots,   replace=False)
+    sampled_humans = rng.choice(human_idx, size=n_humans, replace=False)
+    balanced_idx   = np.concatenate([sampled_bots, sampled_humans])
+    rng.shuffle(balanced_idx)
+
+    X_small = X.loc[balanced_idx].reset_index(drop=True)
+    y_small = y.loc[balanced_idx].reset_index(drop=True)
+    print(f"Balanced sample — bots: {n_bots}, humans: {n_humans}, total: {len(X_small)}")
 
     # Train/holdout split on the *smaller* set
     X_train, X_test, y_train, y_test = train_test_split(
