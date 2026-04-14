@@ -1,12 +1,17 @@
 import json
 import time
+from datetime import datetime
 from typing import Dict, Any
 
 import requests
 import pandas as pd
+import plotly.express as px
 import streamlit as st
 
+from analytics import get_stats, init_db
 from config import API_BASE
+
+init_db()
 
 # ---------- PAGE CONFIG ----------
 st.set_page_config(
@@ -35,7 +40,7 @@ with st.sidebar:
 st.title("🛡️ Bot & Profile Risk Detection")
 st.write("Detect bots from account metadata and assess profile image risk.")
 
-tabs = st.tabs(["👤 User Analyzer", "🖼️ Profile Image Privacy", "📈 Diagnostics"])
+tabs = st.tabs(["👤 User Analyzer", "🖼️ Profile Image Privacy", "📈 Diagnostics", "🔒 Admin"])
 
 
 # ---------- HELPERS ----------
@@ -227,3 +232,150 @@ with tabs[2]:
         st.write("**Config**")
         st.code(json.dumps({"API_BASE": api_base}, indent=2))
     st.caption("If API ping fails, verify FastAPI is running and the base URL is correct.")
+
+
+# ---------- TAB 4: ADMIN DASHBOARD ----------
+with tabs[3]:
+    st.subheader("Admin Monitoring")
+    st.caption(f"Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    if st.button("Refresh Data"):
+        st.rerun()
+
+    stats = get_stats()
+
+    # ── KPI cards ──────────────────────────────────────────────────────────
+    k1, k2, k3, k4, k5 = st.columns(5)
+    k1.metric("Active Installs",    stats["unique_installs"],
+              help="Unique Chrome extension IDs that have pinged the server")
+    k2.metric("Total API Calls",    f"{stats['total_calls']:,}")
+    k3.metric("Calls Today",        f"{stats['calls_today']:,}")
+    k4.metric("Avg Bot Score",      f"{stats['avg_bot_probability']*100:.1f}%",
+              help="Average bot probability across last 1 000 user analyses")
+    k5.metric("Avg Response Time",  f"{stats['avg_response_time_ms']:.0f} ms")
+
+    st.markdown("---")
+
+    # ── Row 1: daily calls + risk breakdown ────────────────────────────────
+    col_a, col_b = st.columns(2)
+
+    with col_a:
+        st.markdown("#### API Calls — Last 30 Days")
+        if stats["daily_calls"]:
+            df_daily = pd.DataFrame(stats["daily_calls"])
+            fig = px.bar(df_daily, x="day", y="count",
+                         labels={"day": "Date", "count": "Calls"},
+                         color_discrete_sequence=["#3b82f6"])
+            fig.update_layout(margin=dict(t=10, b=10), height=260, xaxis_title="")
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("No call data yet — start using the extension.")
+
+    with col_b:
+        st.markdown("#### Risk Level Breakdown")
+        rb = stats["risk_breakdown"]
+        if rb:
+            fig = px.pie(
+                names=list(rb.keys()), values=list(rb.values()),
+                color=list(rb.keys()),
+                color_discrete_map={"High": "#ef4444", "Medium": "#f59e0b", "Low": "#22c55e"},
+                hole=0.4,
+            )
+            fig.update_layout(margin=dict(t=10, b=10), height=260)
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("No risk data yet.")
+
+    # ── Row 2: score distributions ─────────────────────────────────────────
+    col_c, col_d = st.columns(2)
+
+    with col_c:
+        st.markdown("#### Bot Probability Distribution")
+        if stats["bot_probabilities"]:
+            fig = px.histogram(x=stats["bot_probabilities"], nbins=25,
+                               labels={"x": "Bot Probability"},
+                               color_discrete_sequence=["#6366f1"])
+            fig.add_vline(x=0.30, line_dash="dash", line_color="#f59e0b",
+                          annotation_text="Threshold (0.30)")
+            fig.update_layout(margin=dict(t=10, b=10), height=240,
+                               xaxis_title="Bot Probability", yaxis_title="Count")
+            st.plotly_chart(fig, use_container_width=True)
+            flagged = sum(1 for p in stats["bot_probabilities"] if p >= 0.30)
+            st.caption(f"{flagged} of last {len(stats['bot_probabilities'])} profiles flagged as bot "
+                       f"({flagged/len(stats['bot_probabilities'])*100:.1f}%)")
+        else:
+            st.info("No bot probability data yet.")
+
+    with col_d:
+        st.markdown("#### Profile Image Risk Distribution")
+        if stats["image_risk_scores"]:
+            fig = px.histogram(x=stats["image_risk_scores"], nbins=25,
+                               labels={"x": "Image Risk Score"},
+                               color_discrete_sequence=["#8b5cf6"])
+            fig.add_vline(x=0.60, line_dash="dash", line_color="#ef4444",
+                          annotation_text="High Risk")
+            fig.add_vline(x=0.30, line_dash="dash", line_color="#f59e0b",
+                          annotation_text="Medium Risk")
+            fig.update_layout(margin=dict(t=10, b=10), height=240,
+                               xaxis_title="Image Risk Score", yaxis_title="Count")
+            st.plotly_chart(fig, use_container_width=True)
+            high = sum(1 for s in stats["image_risk_scores"] if s >= 0.60)
+            st.caption(f"{high} high-risk images in last {len(stats['image_risk_scores'])} analyzed")
+        else:
+            st.info("No profile image analyses yet.")
+
+    # ── Row 3: server load ─────────────────────────────────────────────────
+    col_e, col_f = st.columns(2)
+
+    with col_e:
+        st.markdown("#### Request Volume — Last 24 Hours")
+        if stats["hourly_calls"]:
+            df_h = pd.DataFrame(stats["hourly_calls"])
+            fig = px.area(df_h, x="hour", y="count",
+                          labels={"hour": "Hour (UTC)", "count": "Calls"},
+                          color_discrete_sequence=["#3b82f6"])
+            fig.update_layout(margin=dict(t=10, b=10), height=220, xaxis_title="Time (UTC)")
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("No hourly data yet.")
+
+    with col_f:
+        st.markdown("#### Avg Response Time — Last 24 Hours")
+        if stats["rt_trend"]:
+            df_rt = pd.DataFrame(stats["rt_trend"])
+            fig = px.line(df_rt, x="hour", y="avg_ms", markers=True,
+                          labels={"hour": "Hour (UTC)", "avg_ms": "Avg ms"},
+                          color_discrete_sequence=["#10b981"])
+            fig.add_hline(y=200, line_dash="dot", line_color="#f59e0b",
+                          annotation_text="200 ms target")
+            fig.update_layout(margin=dict(t=10, b=10), height=220,
+                               xaxis_title="Time (UTC)", yaxis_title="Avg Response (ms)")
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("No response-time data yet.")
+
+    # ── Extension activity ──────────────────────────────────────────────────
+    st.markdown("---")
+    st.markdown("#### Extension Activity")
+    ea1, ea2 = st.columns(2)
+    ea1.metric("Total Sessions Tracked", stats["total_pings"],
+               help="Total /ping calls including repeat sessions")
+    ea2.metric("Unique Installs", stats["unique_installs"])
+
+    # ── Recent calls table ──────────────────────────────────────────────────
+    st.markdown("#### Recent API Calls (last 25)")
+    if stats["recent_calls"]:
+        df_rec = pd.DataFrame(stats["recent_calls"])
+        df_rec["timestamp"] = (pd.to_datetime(df_rec["timestamp"])
+                                 .dt.strftime("%Y-%m-%d %H:%M:%S"))
+        df_rec["bot_probability"]  = df_rec["bot_probability"].apply(
+            lambda x: f"{x*100:.1f}%" if x is not None else "—")
+        df_rec["image_risk_score"] = df_rec["image_risk_score"].apply(
+            lambda x: f"{x*100:.1f}%" if x is not None else "—")
+        df_rec["response_time_ms"] = df_rec["response_time_ms"].apply(
+            lambda x: f"{x:.0f} ms" if x is not None else "—")
+        df_rec["error"] = df_rec["error"].apply(lambda x: "Yes" if x else "No")
+        df_rec.columns = ["Time (UTC)", "Endpoint", "Bot Prob",
+                          "Image Risk", "Risk Level", "Response Time", "Error"]
+        st.dataframe(df_rec, use_container_width=True, hide_index=True)
+    else:
+        st.info("No API calls logged yet. Make sure the FastAPI server is running and the extension is active.")

@@ -78,11 +78,26 @@ def main():
         listed_count    = profile.get("listed_count", 0)
 
         description       = (profile.get("description") or "").strip()
-        profile_image_url = (profile.get("profile_image_url") or "").strip()
         verified          = bool(profile.get("verified", False))
         location          = (profile.get("location") or "").strip()
         url               = (profile.get("url") or "").strip()
         created_at        = profile.get("created_at", "")
+
+        # FIX: default_profile_image=True means the account is still using
+        # Twitter's placeholder avatar — a strong bot signal.
+        # The old code used bool(profile_image_url) which is ALWAYS True
+        # because Twitter always stores a URL even for the default egg/avatar.
+        default_profile_image = bool(profile.get("default_profile_image", True))
+        has_profile_image     = int(not default_profile_image)  # 1 = real custom photo
+
+        # default_profile=True means the account has never customised its theme
+        # (background colour, header image) — another bot completeness signal.
+        default_profile  = int(bool(profile.get("default_profile", True)))
+
+        # favourites_count = total number of tweets the user has ever liked.
+        # Bots rarely like tweets; active humans accumulate thousands.
+        favourites_count = int(profile.get("favourites_count",
+                               profile.get("favorite_count", 0)) or 0)
 
         account_age_days = parse_created_at(created_at)
 
@@ -92,8 +107,10 @@ def main():
             "following_count": following_count,
             "tweet_count": tweet_count,
             "listed_count": listed_count,
+            "favourites_count": favourites_count,
             "account_age_days": account_age_days,
-            "has_profile_image": int(bool(profile_image_url)),
+            "has_profile_image": has_profile_image,
+            "default_profile": default_profile,
             "has_description": int(description != ""),
             "verified": int(verified),
             "has_location": int(location != ""),
@@ -149,7 +166,7 @@ def main():
             raise SystemExit(f"Please adjust label mapping for labels: {uniques}")
 
     df.to_csv(OUT_FINAL, index=False)
-    print(f"✅ Saved final users file to {OUT_FINAL} (rows={len(df)})")
+    print(f"Done. Saved final users file to {OUT_FINAL} (rows={len(df)})")
 
 
 if __name__ == "__main__":

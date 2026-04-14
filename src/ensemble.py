@@ -40,11 +40,17 @@ def compute_heuristic_score(user: Dict[str, Any]) -> float:
     return float(max(0.0, min(1.0, score)))
 
 
-def combine_scores(bot_probability: float, heuristic_score: float) -> Dict[str, Any]:
+def combine_scores(
+    bot_probability: float,
+    heuristic_score: float,
+    image_risk_score: float | None = None,
+) -> Dict[str, Any]:
     """
-    Combine bot probability and heuristic score into a single trust score.
-    bot_probability:  [0,1] – probability that account is a bot
-    heuristic_score:  [0,1] – hand-crafted trust score (higher = more legitimate)
+    Combine bot probability, heuristic score, and optional profile image risk
+    into a single trust score.
+    bot_probability:   [0,1] – probability that account is a bot
+    heuristic_score:   [0,1] – hand-crafted trust score (higher = more legitimate)
+    image_risk_score:  [0,1] – CV-based profile image risk (higher = riskier), optional
     """
     w_bot = 0.6
     w_heur = 0.4
@@ -52,6 +58,12 @@ def combine_scores(bot_probability: float, heuristic_score: float) -> Dict[str, 
     bot_trust = 1.0 - bot_probability  # invert: 1 = human-like, 0 = strong bot
 
     trust_score = w_bot * float(bot_trust) + w_heur * float(heuristic_score)
+
+    # Profile image risk: high-risk image (AI-generated, no face) reduces trust
+    # by up to 0.15 points (proportional to the risk score).
+    if image_risk_score is not None:
+        trust_score -= 0.15 * float(image_risk_score)
+
     trust_score = max(0.0, min(1.0, trust_score))
 
     if trust_score >= 0.75:
@@ -64,5 +76,5 @@ def combine_scores(bot_probability: float, heuristic_score: float) -> Dict[str, 
     return {
         "trust_score": round(trust_score, 3),
         "trust_level": trust_level,
-        "weights": {"bot": w_bot, "heuristics": w_heur},
+        "weights": {"bot": w_bot, "heuristics": w_heur, "image_risk": 0.15 if image_risk_score is not None else 0},
     }

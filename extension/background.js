@@ -4,6 +4,32 @@
 
 const API_BASE = "http://localhost:8000";
 
+// Ping the server on startup so the admin dashboard can count active installs.
+chrome.runtime.onStartup.addListener(() => {
+  fetch(`${API_BASE}/ping`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Extension-Id": chrome.runtime.id,
+      "X-Extension-Version": chrome.runtime.getManifest().version,
+    },
+    body: JSON.stringify({}),
+  }).catch(() => {}); // silently ignore if server is offline
+});
+
+// Also ping on first install / update.
+chrome.runtime.onInstalled.addListener(() => {
+  fetch(`${API_BASE}/ping`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Extension-Id": chrome.runtime.id,
+      "X-Extension-Version": chrome.runtime.getManifest().version,
+    },
+    body: JSON.stringify({}),
+  }).catch(() => {});
+});
+
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
   if (message.type === "ANALYZE_USER") {

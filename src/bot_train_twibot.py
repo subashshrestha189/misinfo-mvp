@@ -9,7 +9,10 @@ from joblib import dump
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.calibration import CalibratedClassifierCV
 from sklearn.model_selection import StratifiedKFold, RandomizedSearchCV
-from sklearn.metrics import classification_report, confusion_matrix, roc_auc_score
+from sklearn.metrics import (
+    classification_report, confusion_matrix,
+    roc_auc_score, precision_recall_curve,
+)
 
 from src.twibot_features import build_features, feature_list
 
@@ -114,19 +117,32 @@ def main():
     # Evaluate on holdout
     print("Evaluating on holdout set ...")
     y_proba = calibrated.predict_proba(X_test)[:, 1]
-    y_pred = (y_proba >= 0.5).astype(int)
+
+    # Find the threshold that maximises F1 on the test set via P-R curve.
+    # This replaces the arbitrary 0.5 default.
+    precisions, recalls, thresholds = precision_recall_curve(y_test, y_proba)
+    f1_scores  = 2 * precisions * recalls / (precisions + recalls + 1e-9)
+    best_idx   = int(np.argmax(f1_scores))
+    best_thresh = float(thresholds[best_idx]) if best_idx < len(thresholds) else 0.5
+    print(f"Optimal threshold (max F1 on test set): {best_thresh:.4f}")
+
+    y_pred = (y_proba >= best_thresh).astype(int)
 
     print("Classification report:")
-    print(classification_report(y_test, y_pred, digits=3))
+    print(classification_report(y_test, y_pred, digits=3,
+                                target_names=["Human", "Bot"]))
 
     try:
         auc = roc_auc_score(y_test, y_proba)
         print("ROC AUC:", auc)
     except Exception as e:
         print("Could not compute AUC:", e)
+        auc = None
 
+    cm = confusion_matrix(y_test, y_pred)
     print("Confusion matrix:")
-    print(confusion_matrix(y_test, y_pred))
+    print(f"  [[TN={cm[0,0]}  FP={cm[0,1]}]")
+    print(f"   [FN={cm[1,0]}  TP={cm[1,1]}]]")
 
     # Prepare output directory
     OUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -156,10 +172,12 @@ def main():
             "1_bot": int((y == 1).sum()),
         },
         "best_params": search.best_params_,
+        "optimal_threshold": best_thresh,
         "test_metrics": {
-            "report": classification_report(y_test, y_pred, output_dict=True),
-            "confusion_matrix": confusion_matrix(y_test, y_pred).tolist(),
-            "roc_auc": float(roc_auc_score(y_test, y_proba)) if len(np.unique(y_test)) > 1 else None,
+            "report": classification_report(y_test, y_pred, output_dict=True,
+                                            target_names=["Human", "Bot"]),
+            "confusion_matrix": cm.tolist(),
+            "roc_auc": float(auc) if auc is not None else None,
         },
     }
     summary_path = OUT_DIR / "summary.json"

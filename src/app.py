@@ -1,14 +1,16 @@
 # src/app.py
 from pathlib import Path
 from typing import Optional
+import time
 
 import joblib
 import pandas as pd
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from pydantic import BaseModel
 
+from src.analytics import init_db, log_api_call, log_extension_ping
 from src.ensemble import combine_scores, compute_heuristic_score
 from src.twibot_features import build_features
 
@@ -34,8 +36,16 @@ except Exception as exc:
 BASE_DIR = Path(__file__).resolve().parent.parent
 BOT_MODEL_DIR = BASE_DIR / "models" / "bot_tuned"
 
-# ---- BOT THRESHOLDS (tuned) ----
-BOT_THRESHOLD = 0.30
+# ---- BOT THRESHOLD — loaded from summary.json (set during training) ----
+_summary_path = BOT_MODEL_DIR / "summary.json"
+BOT_THRESHOLD = 0.30   # fallback default
+if _summary_path.exists():
+    try:
+        import json as _json
+        _summary = _json.loads(_summary_path.read_text(encoding="utf-8"))
+        BOT_THRESHOLD = float(_summary.get("optimal_threshold", BOT_THRESHOLD))
+    except Exception:
+        pass
 HIGH_RISK = 0.60
 
 # ------------- FASTAPI APP ------------------
@@ -54,6 +64,9 @@ app.add_middleware(
 )
 
 # ------------- LOAD MODELS ------------------
+print("Initialising analytics DB ...")
+init_db()
+
 print("Loading models...")
 
 # --- Bot model ---
@@ -92,6 +105,13 @@ class UserInput(BaseModel):
     verified: int
     has_location: int
     has_url: int
+    # New features (default 0 so old callers keep working)
+    favourites_count: float = 0      # total likes the user has given
+    default_profile: int = 0         # 1 = never customised theme (bot signal)
+    # Optional: CV-based profile image risk score [0,1].
+    # When provided, it is blended into combined_bot_probability and trust_score.
+    # It is NOT passed to the ML model (which was trained without this feature).
+    profile_image_risk_score: Optional[float] = None
 
 
 # ------------- INTERNAL HELPERS ------------------
@@ -157,6 +177,15 @@ def home():
     return {"message": "Bot & Profile Risk Detection API is running!"}
 
 
+@app.post("/ping")
+def extension_ping(request: Request, extension_id: str = "", version: str = ""):
+    """Called by the Chrome extension on startup to count active installs."""
+    eid = extension_id or request.headers.get("X-Extension-Id") or None
+    ver = version or request.headers.get("X-Extension-Version") or None
+    log_extension_ping(extension_id=eid, version=ver)
+    return {"status": "ok"}
+
+
 @app.post("/analyze/user")
 def analyze_user(data: UserInput):
     """Bot detection endpoint."""
@@ -165,16 +194,40 @@ def analyze_user(data: UserInput):
     if data.account_age_days <= 0:
         raise HTTPException(status_code=400, detail="Account age must be a positive number of days.")
 
+    t0 = time.perf_counter()
     user_dict = data.model_dump()
+
+    # Extract image risk before passing to ML model — the model was trained
+    # without this feature; we blend it in at the ensemble layer.
+    img_risk = user_dict.pop("profile_image_risk_score", None)
+
     user_result = analyze_user_internal(user_dict)
     heur_score = compute_heuristic_score(user=user_dict)
     ensemble = combine_scores(
         bot_probability=user_result.get("bot_probability", 0.0),
         heuristic_score=heur_score,
+        image_risk_score=img_risk,
+    )
+
+    # combined_bot_probability blends ML score (80%) + image risk (20%).
+    # Falls back to raw bot_probability when no image risk is available.
+    raw_prob = user_result["bot_probability"]
+    if img_risk is not None:
+        combined = round(min(1.0, max(0.0, 0.80 * raw_prob + 0.20 * float(img_risk))), 3)
+    else:
+        combined = raw_prob
+
+    rt_ms = (time.perf_counter() - t0) * 1000
+    log_api_call(
+        endpoint="analyze_user",
+        response_time_ms=rt_ms,
+        bot_probability=raw_prob,
+        risk_level=user_result.get("risk_level"),
+        is_bot=user_result.get("is_bot"),
     )
 
     return {
-        "user": user_result,
+        "user": {**user_result, "combined_bot_probability": combined},
         "heuristics": {"heuristic_score": heur_score},
         "ensemble": ensemble,
     }
@@ -187,6 +240,7 @@ async def analyze_profile_image(file: UploadFile = File(...)):
     Upload an image and return a risk score + explainable signals.
     """
     _ensure_cv_ready()
+    t0 = time.perf_counter()
     try:
         data = await file.read()
         bgr = decode_image_from_bytes(data)
@@ -194,10 +248,22 @@ async def analyze_profile_image(file: UploadFile = File(...)):
 
         result = compute_profile_image_risk(bgr, face_detector)
         result["filename"] = file.filename
+
+        rt_ms = (time.perf_counter() - t0) * 1000
+        log_api_call(
+            endpoint="analyze_profile_image",
+            response_time_ms=rt_ms,
+            image_risk_score=result.get("profile_image_risk_score"),
+            risk_level=result.get("risk_level"),
+        )
         return result
     except ValueError as ve:
+        log_api_call(endpoint="analyze_profile_image",
+                     response_time_ms=(time.perf_counter() - t0) * 1000, error=True)
         raise HTTPException(status_code=400, detail=str(ve))
     except Exception as exc:
+        log_api_call(endpoint="analyze_profile_image",
+                     response_time_ms=(time.perf_counter() - t0) * 1000, error=True)
         raise HTTPException(status_code=500, detail=f"Profile image analysis failed: {exc}")
 
 
