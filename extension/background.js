@@ -2,7 +2,7 @@
 // Proxies API calls from content.js to http://localhost because
 // MV3 content scripts on HTTPS pages cannot fetch HTTP (mixed content).
 
-const API_BASE = "http://localhost:8000";
+const API_BASE = "http://3.90.175.165:8000";
 
 // Ping the server on startup so the admin dashboard can count active installs.
 chrome.runtime.onStartup.addListener(() => {

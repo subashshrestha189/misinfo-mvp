@@ -1,5 +1,5 @@
 // popup.js
-const DEFAULT_API_BASE = "http://localhost:8000";
+const DEFAULT_API_BASE = "http://3.90.175.165:8000";
 
 const apiInput = document.getElementById("apiBase");
 const testBtn  = document.getElementById("testBtn");
