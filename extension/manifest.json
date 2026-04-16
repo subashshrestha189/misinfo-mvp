@@ -12,7 +12,8 @@
     "https://x.com/*",
     "https://twitter.com/*",
     "https://pbs.twimg.com/*",
-    "http://localhost:8000/*"
+    "http://localhost:8000/*",
+    "http://3.90.175.165:8000/*"
   ],
 
   "content_scripts": [
