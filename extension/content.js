@@ -101,9 +101,12 @@ function extractProfilePageData() {
 
   // Profile image — use the page owner's handle to find THEIR photo link,
   // not the logged-in user's avatar which appears first in the DOM.
+  // Use case-insensitive selectors since Twitter handle casing can vary.
   const avatarEl = (
-    document.querySelector(`a[href="/${ownerHandle}/photo"] img`) ||
-    document.querySelector(`a[href*="/${ownerHandle}/photo"] img`)
+    document.querySelector(`a[href="/${ownerHandle}/photo" i] img`) ||
+    document.querySelector(`a[href*="/${ownerHandle}/photo" i] img`) ||
+    document.querySelector(`[data-testid="UserAvatar-Container-${ownerHandle}"] img`) ||
+    document.querySelector(`[data-testid="UserAvatar-Container-${ownerHandle.toLowerCase()}"] img`)
   );
   const profileImageUrl = avatarEl?.src
     ? avatarEl.src.replace(/_(normal|bigger|mini)\./, "_400x400.")
