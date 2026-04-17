@@ -1,237 +1,223 @@
-**Social Media Bot and Fake News Detection**
+# MisInfo Guard — Bot & Profile Risk Detection
 
-This repository contains a prototype system that detects **fake news articles** and estimates the likelihood that a **social media account is a bot**.
+Detects social media bots and assesses profile image risk using ML models, served via a FastAPI backend, a Streamlit dashboard, and a Chrome extension for live analysis on X (Twitter).
 
-We focus on two main components:
-
-1. **Fake News Analyzer**: fine-tuned DistilBERT model categorizing news articles.
-2. **Bot Detection**: Random Forest model trained on TwiBot-20 user metadata.
-
-Both models are provided through a **FastAPI** backend and an interactive **Streamlit** dashboard.
-
-This work was completed as part of the **AIDI1003 Capstone Project** at **Durham College**.
+This project was completed as part of the **AIDI1003 Capstone Project** at **Durham College**.
 
 ---
 
-## Project Objectives
+## Features
 
-- Build reliable ML pipelines for detecting misinformation in news text.
-- Analyze user activity and information to identify automated (bot) behavior.
-- Integrate multiple models into a single functional API.
-- Demonstrate dataset handling, preprocessing, training, evaluation, and deployment readiness.
-
- ---
-
- ## System Overview
-
- The system contains two independent ML workflows:
-
-## Fake News Detection
-- Dataset: English Fake News dataset from HuggingFace.
-- Preprocessing: Text cleaning & tokenization.
-- Models:
-  - Baseline: **TF-IDF + Logistic Regression**
-  - Advanced: **DistilBERT fine-tuning**
-- Metrics:
-  - **Accuracy:** ~76.5% (validation)
-  - **F1-score:** ~0.49 (fast demo fine-tune)
- 
-## Bot Detection
-- Dataset: Official TwiBot-20 user metadata & labels (`user.json`, `label.csv`)
-- Feature Engineering:
-  - Activity rate
-  - Account age
-  - Bot interaction metrics
-  - Hashtag & tweet statistics
-- Model:
-  - **Random Forest Classifier**
-  - Cross-validated + probability calibration
-- Metrics:
-  - **Accuracy:** 92.2%
-  - **ROC-AUC:** ~0.77
-
----
-
-## Web Interface
-
-Our Streamlit dashboard contains the following tabs:
-
-## Article Analyzer
-Paste news article text → get:
-- Fake/Real prediction
-- Confidence score
-
-## User Analyzer
-Enter user profile metadata → get:
-- Bot probability score
-- Risk classification
-
-## Diagnostics
-System logs and internal test runs.
+- **Bot Detection** — Random Forest classifier trained on TwiBot-22 metadata (700K accounts, 92.2% accuracy)
+- **Profile Image Risk Scoring** — MediaPipe + OpenCV face analysis pipeline
+- **Ensemble Scoring** — Blends ML bot score (80%) with image risk (20%) into a combined probability
+- **Chrome Extension** — Live badge overlay on X (Twitter) profiles
+- **Streamlit Dashboard** — Analytics, user analyzer, diagnostics, and admin panel
+- **FastAPI Backend** — REST API with `/analyze/user`, `/analyze/profile-image`, `/privacy/blur-on-demand`
 
 ---
 
 ## Project Structure
 
+```
 misinfo-mvp/
-  src/
-     app.py - FastAPI application endpoints
-     dashboard.py - Streamlit dashboard launcher
-     Fake News Pipeline:
-         fake_news_eda.py
-         preprocess_texts.py
-         fake_news_baseline.py
-         fake_news_bert_train.py
-         fake_news_retrain.py
-         test_fake_news_bert.py
-     Bot Detection Pipeline:
-         twibot_extract.py
-         twibot_features.py
-         bot_baseline.py
-         bot_train_twibot.py
-         bot_traina_cv_calibrated.py
-         bot_infer.py
-         bot_permutation_importance.py
-     Data Utilities:
-         encode_labels.py
-         utils_io.py
-         save_summary.py
-     api helpers:
-         mini_app.py
-         config.py
-     requirements.txt
-     .gitignore
-     README.md
-
- ---
-
- ## Data and Model Storage 
-
- **Large datasets and trained models are not committed** to GitHub due to platform file size limits.
-
- Files excluded:
- - Raw CSV datasets (100MB+)
-- `.safetensors' transformer weights (250MB+)
-- TwiBot JSON datasets (multi-GB size)
-- Virtual environment ('.venv/')
-
-All training can be fully reproduced by users following the instructions below.
+├── src/
+│   ├── app.py                  # FastAPI application
+│   ├── dashboard.py            # Streamlit dashboard
+│   ├── ensemble.py             # Score blending logic
+│   ├── twibot_features.py      # Feature engineering
+│   ├── analytics.py            # SQLite analytics logging
+│   ├── config.py               # API base URL config
+│   └── cv/                     # Computer vision modules
+│       ├── face_detect.py
+│       ├── profile_risk.py
+│       ├── privacy_blur.py
+│       └── io_utils.py
+├── extension/                  # Chrome MV3 extension
+│   ├── manifest.json
+│   ├── background.js
+│   ├── content.js
+│   ├── popup.html / popup.js
+│   └── styles.css
+├── models/
+│   └── bot_tuned/              # Trained model files (not in git)
+│       ├── twibot_rf_calibrated.joblib
+│       ├── feature_schema.joblib
+│       └── summary.json
+├── requirements.txt            # Streamlit Cloud (lightweight)
+├── requirements_full.txt       # EC2 / local (full, includes opencv + mediapipe)
+└── start.sh                    # EC2 startup script
+```
 
 ---
 
-## Datasets
+## Setup
 
-## Fake News Dataset
-Source:
-- HuggingFace dataset portal  
-- Example:  
-  https://huggingface.co/datasets/ErfanMoosaviMonazzah/fake-news-detection-dataset-English
+### Prerequisites
 
-Downloaded using:
-python src/download_fake_news_hf.py
+- Python 3.11
+- Git
 
-## TwiBot-20 Dataset
-Source:
-- https://github.com/BunsenFeng/TwiBot-20
+---
 
-Files used:
-- user.json
-- label.csv
+### 1. Clone the Repository
 
-Feature extraction:
-python src/twibot_extract.py
+```bash
+git clone https://github.com/subashshrestha189/misinfo-mvp.git
+cd misinfo-mvp
+```
 
-## Setup and Installation
+---
 
-1. Clone the Repo
+### 2. Local Development
 
-git clone https://github.com/subashshrestha189/misinfo-bot-fakenews-capstone.git
-cd misinfo-bot-fakenews-capstone
+**Create and activate a virtual environment:**
 
-2. Create Virtual Environment
+```bash
+# Windows (PowerShell)
+python -m venv .venv311
+.\.venv311\Scripts\Activate.ps1
 
-python -m venv .venv
-.\.venv\Scripts\activate
+# macOS / Linux
+python3.11 -m venv .venv311
+source .venv311/bin/activate
+```
 
-3. Install Requirements
+**Install dependencies:**
 
-pip install -r requirements.txt
+```bash
+pip install --upgrade pip
+pip install -r requirements_full.txt
+```
 
-## Model Training
+**Place trained model files** in `models/bot_tuned/`:
+- `twibot_rf_calibrated.joblib`
+- `feature_schema.joblib`
+- `summary.json`
 
-Fake News Baseline:
-python src/fake_news_baseline.py
+**Start the API:**
 
-DistilBERT Fine-Tune:
-python src/fake_news_bert_train.py
+```bash
+python -m uvicorn src.app:app --reload
+```
 
-Bot Detection Training:
-python src/twibot_extract.py
-python src/bot_train_twibot.py
-python src/bot_train_cv_calibrated.py
+API docs available at: `http://localhost:8000/docs`
 
-API Launch (FastAPI)
-uvicorn src.app:app --reload
+**Start the dashboard (separate terminal):**
 
-## Endpoints:
-- POST /analyze/article
-- POST /analyze/user
-
-Interactive documentation:
-http://127.0.0.1:8000/docs
-
-## Dashboard Launch (Streamlit)
+```bash
 streamlit run src/dashboard.py
+```
 
 ---
 
-## Performance Results
+### 3. EC2 Deployment
 
-## Bot Detection
-- Samples: 700,000 accounts
+**Requirements:** Ubuntu EC2 instance, port 8000 open in Security Group.
+
+**SSH into the instance:**
+
+```bash
+ssh -i ~/Downloads/misinfo-key.pem ubuntu@<your-ec2-ip>
+```
+
+**On the EC2 instance:**
+
+```bash
+git clone https://github.com/subashshrestha189/misinfo-mvp.git
+cd misinfo-mvp
+python3.11 -m venv .venv
+source .venv/bin/activate
+pip install --upgrade pip
+pip install -r requirements_full.txt
+```
+
+**Copy trained models from local machine** (run on your local machine):
+
+```bash
+scp -i ~/Downloads/misinfo-key.pem \
+    models/bot_tuned/twibot_rf_calibrated.joblib \
+    models/bot_tuned/feature_schema.joblib \
+    ubuntu@<your-ec2-ip>:/home/ubuntu/misinfo-mvp/models/bot_tuned/
+```
+
+**Start the API on EC2:**
+
+```bash
+bash start.sh
+```
+
+---
+
+### 4. Streamlit Cloud Dashboard
+
+1. Go to [share.streamlit.io](https://share.streamlit.io) and sign in with GitHub
+2. Click **New app**:
+   - Repository: `subashshrestha189/misinfo-mvp`
+   - Branch: `main`
+   - Main file path: `src/dashboard.py`
+3. Click **Advanced settings → Secrets** and add:
+   ```toml
+   API_BASE = "http://<your-ec2-ip>:8000"
+   ```
+4. Under **General**, set Python version to **3.11**
+5. Click **Deploy**
+
+> Note: `requirements.txt` in this repo is the lightweight version used by Streamlit Cloud. Full dependencies (opencv, mediapipe) are in `requirements_full.txt`.
+
+---
+
+### 5. Chrome Extension
+
+1. Open Chrome and go to `chrome://extensions`
+2. Enable **Developer mode** (top right)
+3. Click **Load unpacked** and select the `extension/` folder
+4. Click the MisInfo Guard icon → set **FastAPI Base URL** to `http://<your-ec2-ip>:8000`
+5. Visit any profile on X (Twitter) to see live bot risk scores
+
+---
+
+## API Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/` | Health check |
+| `POST` | `/analyze/user` | Bot probability from user metadata |
+| `POST` | `/analyze/profile-image` | Profile image risk score |
+| `POST` | `/privacy/blur-on-demand` | Blur faces in high-risk images |
+| `POST` | `/ping` | Extension ping (analytics) |
+
+Interactive docs: `http://<your-host>:8000/docs`
+
+---
+
+## Model Performance
+
+### Bot Detection (TwiBot-22)
+- Training samples: 700,000 accounts
 - Accuracy: 92.2%
 - ROC-AUC: 0.77
-- Feature count: 20
+- Features: 20 metadata features
 
-## Fake News Detection
-- Samples: ~5,000 articles
-- Base model: distilbert
-- Epochs: 1 (lightweight)
-- Accuracy: 76.5%
-- F1 score: 0.49
+### Profile Image Risk
+- Face detection via MediaPipe
+- Signals: face presence, image quality, metadata anomalies
 
 ---
 
 ## Team
 
-Subash Shrestha: Model integration, API deployment, GitHub management & documentation.
-
-Baburam Panta: Bot feature engineering and dataset preprocessing.
-
-Aman Bansal: Transformer fine-tuning.
-
-Laxman Neupane: Backend architecture.
-
-Sisam Kafle: Streamlit UX design.
-
-Aditya Sharma: Fake-news baseline modeling & evaluation.
-
----
-
-## Reproducibility
-
-This project is completely reproducible:
-
-- Install Python environment.
-- Download datasets from official sources.
-- Execute scripts for preprocessing.
-- Train the models.
-- Open the dashboard and API.
-
-Due to dataset license and size limits, raw data and weights are collected externally but pipelines are fully automated using this repository.
+| Name | Role |
+|------|------|
+| Subash Shrestha | Model integration, API deployment, Chrome extension, GitHub |
+| Baburam Panta | Bot feature engineering and dataset preprocessing |
+| Aman Bansal | Transformer fine-tuning |
+| Laxman Neupane | Backend architecture |
+| Sisam Kafle | Streamlit UX design |
+| Aditya Sharma | Baseline modeling & evaluation |
 
 ---
 
 ## License
 
-Academic use only - Durham College Capstone Project
+Academic use only — Durham College Capstone Project
