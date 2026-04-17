@@ -195,7 +195,7 @@ Interactive docs: `http://<your-host>:8000/docs`
 
 ### Bot Detection (TwiBot-22)
 - Training samples: 700,000 accounts
-- Accuracy: 92.2%
+- Accuracy: 70.9%
 - ROC-AUC: 0.77
 - Features: 20 metadata features
 
