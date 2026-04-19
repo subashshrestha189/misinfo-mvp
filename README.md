@@ -177,6 +177,18 @@ bash start.sh
 
 ---
 
+## Deployment Architecture
+
+| Component | Platform | Specification | Rationale |
+|-----------|----------|---------------|-----------|
+| FastAPI backend | AWS EC2 | t3.medium — Ubuntu 22.04 LTS, 4GB RAM | Minimum viable spec for Random Forest + MediaPipe concurrent load (~1.15GB). Ubuntu 22.04 required for mediapipe 0.10.x compatibility. |
+| Model storage | EC2 local disk | Copied via `scp` into `models/bot_tuned/` | Models are ~50MB total — no S3 needed at this scale. EC2 instance holds both the API and model files. |
+| Streamlit dashboard | Streamlit Community Cloud | Free tier, GitHub-connected | Zero infrastructure cost. Auto-deploys on git push. `API_BASE` read from `st.secrets` for environment separation. |
+| Chrome extension | Manifest V3 (unpacked) | Content script on x.com | MV3 is the current Chrome standard. Service worker proxies HTTP API calls to bypass mixed-content restrictions on HTTPS pages. |
+| Training (one-time) | Local machine | Python 3.11, venv311 | TwiBot-22 feature extraction and RF training run locally. Trained model files are then copied to EC2 via `scp`. |
+
+---
+
 ## API Endpoints
 
 | Method | Endpoint | Description |
@@ -197,7 +209,9 @@ Interactive docs: `http://<your-host>:8000/docs`
 - Training samples: 700,000 accounts
 - Accuracy: 70.9%
 - ROC-AUC: 0.77
-- Features: 20 metadata features
+- Bot F1-score: 0.60
+- Human Precision: 81.2% / Bot Precision: 55.3%
+- Features: 25 metadata features
 
 ### Profile Image Risk
 - Face detection via MediaPipe
