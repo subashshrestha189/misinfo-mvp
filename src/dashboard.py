@@ -8,10 +8,7 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-from analytics import get_stats, init_db
 from config import API_BASE
-
-init_db()
 
 # ---------- PAGE CONFIG ----------
 st.set_page_config(
@@ -241,7 +238,11 @@ with tabs[3]:
     if st.button("Refresh Data"):
         st.rerun()
 
-    stats = get_stats()
+    stats_resp, stats_err = call_api_json("GET", f"{api_base}/admin/stats")
+    if stats_err or not stats_resp:
+        st.error(f"Could not load stats from API: {stats_err}")
+        st.stop()
+    stats = stats_resp
 
     # ── KPI cards ──────────────────────────────────────────────────────────
     k1, k2, k3, k4, k5 = st.columns(5)

@@ -186,6 +186,13 @@ def extension_ping(request: Request, extension_id: str = "", version: str = ""):
     return {"status": "ok"}
 
 
+@app.get("/admin/stats")
+def admin_stats():
+    """Returns analytics stats from the SQLite database for the dashboard."""
+    from src.analytics import get_stats
+    return get_stats()
+
+
 @app.post("/analyze/user")
 def analyze_user(data: UserInput):
     """Bot detection endpoint."""
